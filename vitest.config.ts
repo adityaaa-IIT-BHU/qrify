@@ -16,5 +16,9 @@ export default defineConfig({
   test: {
     environment: "node",
     setupFiles: ["./tests/setup.ts"],
+    // tests/e2e/** is Playwright's, run via `npm run test:e2e` — its
+    // `test.describe` is not the same API as Vitest's and errors if Vitest
+    // tries to run it.
+    exclude: ["**/node_modules/**", "**/tests/e2e/**"],
   },
 });
