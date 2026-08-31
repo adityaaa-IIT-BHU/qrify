@@ -32,6 +32,15 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+!.env.example
+
+# local dev file storage (STORAGE_DRIVER=local)
+/storage-local
+
+# playwright
+/test-results
+/playwright-report
+/blob-report
 
 # vercel
 .vercel
@@ -39,3 +48,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# prisma generated client (regenerated via `npm run db:generate` / postinstall)
+/src/generated/prisma

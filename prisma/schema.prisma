@@ -1,0 +1,839 @@
+// QRify database schema.
+// Design notes live in docs/DATABASE.md. Key conventions:
+// - cuid() ids everywhere (opaque, non-enumerable, sortable-ish).
+// - Soft deletion (`deletedAt`) on records a user can "remove" without losing
+//   audit/history integrity (User, CandidateProfile, Resume, Job, Employer,
+//   Experience/Education/Project/Skill/Certification).
+// - `ProfileFact` is a generic evidence ledger: every extracted/entered fact
+//   about a candidate carries source + confidence + verification status, so
+//   the AI layer never has to "remember" facts — it retrieves them.
+// - OAuth access/refresh tokens are stored encrypted at the application layer
+//   (see src/lib/crypto.ts) — the DB columns hold ciphertext, never raw tokens.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Auth & identity
+// ─────────────────────────────────────────────────────────────────────────
+
+model User {
+  id              String    @id @default(cuid())
+  email           String    @unique
+  emailVerifiedAt DateTime?
+  passwordHash    String? // null if the user only ever used OAuth/magic-link
+  name            String?
+  image           String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  deletedAt       DateTime?
+
+  sessions          Session[]
+  oauthConnections  OAuthConnection[]
+  candidateProfile  CandidateProfile?
+  employerMemberships EmployerMember[]
+  notifications     Notification[]
+  auditEvents       AuditEvent[]
+
+  @@index([deletedAt])
+}
+
+model Session {
+  id         String    @id @default(cuid())
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash  String    @unique // sha256 of the opaque session token in the cookie
+  createdAt  DateTime  @default(now())
+  expiresAt  DateTime
+  ipAddress  String?
+  userAgent  String?
+  revokedAt  DateTime?
+
+  @@index([userId])
+}
+
+enum OAuthProvider {
+  GOOGLE
+  GITHUB
+  LINKEDIN
+}
+
+// Stores delegated-auth connections. For GITHUB this doubles as a profile
+// data source (repos/languages sync); for GOOGLE/LINKEDIN it may be login-only.
+model OAuthConnection {
+  id                String        @id @default(cuid())
+  userId            String
+  user              User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  provider          OAuthProvider
+  providerAccountId String
+  accessTokenEnc    String // AES-256-GCM ciphertext, see src/lib/crypto.ts
+  refreshTokenEnc   String?
+  scope             String?
+  tokenExpiresAt    DateTime?
+  connectedAt       DateTime      @default(now())
+  lastSyncedAt      DateTime?
+  profileSnapshot   Json? // last-fetched provider profile, for display only
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+}
+
+enum VerificationPurpose {
+  MAGIC_LINK
+  EMAIL_VERIFY
+  PASSWORD_RESET
+}
+
+model VerificationToken {
+  id          String              @id @default(cuid())
+  identifier  String // email address
+  tokenHash   String              @unique // sha256 of the raw token sent to the user
+  purpose     VerificationPurpose
+  expiresAt   DateTime
+  consumedAt  DateTime?
+  createdAt   DateTime            @default(now())
+
+  @@index([identifier, purpose])
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Candidate Career Identity Graph
+// ─────────────────────────────────────────────────────────────────────────
+
+enum RemotePreference {
+  REMOTE
+  HYBRID
+  ONSITE
+  NO_PREFERENCE
+}
+
+model CandidateProfile {
+  id                    String            @id @default(cuid())
+  userId                String            @unique
+  user                  User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  headline              String?
+  location              String?
+  phone                 String?
+  remotePreference      RemotePreference  @default(NO_PREFERENCE)
+  salaryExpectationMin  Int?
+  salaryExpectationMax  Int?
+  salaryCurrency        String?           @default("INR")
+  noticePeriodDays      Int?
+  workAuthorization     String?
+  availability          String?
+  links                 Json? // { portfolio, personalWebsite, linkedinUrl, githubUsername }
+  profileCompleteness   Int               @default(0) // 0-100, recomputed on writes
+  createdAt             DateTime          @default(now())
+  updatedAt             DateTime          @updatedAt
+  deletedAt             DateTime?
+
+  sources        ProfileSource[]
+  facts          ProfileFact[]
+  experiences    Experience[]
+  educations     Education[]
+  projects       Project[]
+  skills         Skill[]
+  achievements   Achievement[]
+  certifications Certification[]
+  portfolioItems PortfolioItem[]
+  publications   Publication[]
+  preference     CandidatePreference?
+  answers        CandidateAnswer[]
+  resumes        Resume[]
+  voiceSessions  VoiceSession[]
+  applications   Application[]
+  consentPolicy  ConsentPolicy?
+
+  @@index([deletedAt])
+}
+
+enum ProfileSourceType {
+  LINKEDIN
+  GITHUB
+  RESUME_UPLOAD
+  VOICE
+  MANUAL
+}
+
+enum ProfileSourceStatus {
+  ACTIVE
+  DISCONNECTED
+  ERROR
+}
+
+model ProfileSource {
+  id                String              @id @default(cuid())
+  candidateProfileId String
+  candidateProfile   CandidateProfile   @relation(fields: [candidateProfileId], references: [id], onDelete: Cascade)
+  type               ProfileSourceType
+  status             ProfileSourceStatus @default(ACTIVE)
+  externalRef        String? // e.g. github username, resume file key, voice session id
+  lastSyncedAt       DateTime?
+  createdAt          DateTime            @default(now())
+
+  facts ProfileFact[]
+
+  @@index([candidateProfileId])
+}
+
+enum VerificationStatus {
+  UNVERIFIED
+  CANDIDATE_CONFIRMED
+  CANDIDATE_EDITED
+}
+
+// Generic append-friendly evidence ledger. Every AI-extracted or
+// manually-entered fact is recorded here so generation can retrieve
+// grounded evidence instead of asking the model to "remember" the candidate.
+model ProfileFact {
+  id                 String              @id @default(cuid())
+  candidateProfileId String
+  candidateProfile   CandidateProfile    @relation(fields: [candidateProfileId], references: [id], onDelete: Cascade)
+  sourceId           String
+  source             ProfileSource       @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  entityType         String // "experience" | "skill" | "project" | ...
+  entityId           String? // id of the row in the specific table, if applicable
+  factKey            String
+  factValue          Json
+  confidence         Float               @default(1.0)
+  verificationStatus VerificationStatus  @default(UNVERIFIED)
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+
+  @@index([candidateProfileId, factKey])
+  @@index([sourceId])
+}
+
+model Experience {
+  id                 String           @id @default(cuid())
+  candidateProfileId String
+  candidateProfile   CandidateProfile @relation(fields: [candidateProfileId], references: [id], onDelete: Cascade)
+  organizationName   String
+  roleTitle          String
+  location           String?
+  startDate          DateTime
+  endDate            DateTime?
+  isCurrent          Boolean          @default(false)
+  description        String?
+  sourceId           String?
+  confidence         Float            @default(1.0)
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+  deletedAt          DateTime?
+
+  achievements Achievement[]
+
+  @@index([candidateProfileId])
+}
+
+model Education {
+  id                 String           @id @default(cuid())
+  candidateProfileId String
+  candidateProfile   CandidateProfile @relation(fields: [candidateProfileId], references: [id], onDelete: Cascade)
+  institution        String
+  degree             String?
+  fieldOfStudy       String?
+  startDate          DateTime?
+  endDate            DateTime?
+  grade              String?
+  sourceId           String?
+  confidence         Float            @default(1.0)
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+  deletedAt          DateTime?
+
+  @@index([candidateProfileId])
+}
+
+model Project {
+  id                 String           @id @default(cuid())
+  candidateProfileId String
+  candidateProfile   CandidateProfile @relation(fields: [candidateProfileId], references: [id], onDelete: Cascade)
+  name               String
+  description        String?
+  url                String?
+  repoUrl            String?
+  technologies       String[]
+  startDate          DateTime?
+  endDate            DateTime?
+  sourceId           String?
+  confidence         Float            @default(1.0)
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+  deletedAt          DateTime?
+
+  achievements Achievement[]
+
+  @@index([candidateProfileId])
+}
+
+model Skill {
+  id                 String           @id @default(cuid())
+  candidateProfileId String
+  candidateProfile   CandidateProfile @relation(fields: [candidateProfileId], references: [id], onDelete: Cascade)
+  name               String
+  category           String? // "language" | "framework" | "tool" | "domain" | ...
+  yearsExperience    Float?
+  sourceId           String?
+  confidence         Float            @default(1.0)
+  createdAt          DateTime         @default(now())
+
+  @@unique([candidateProfileId, name])
+  @@index([candidateProfileId])
+}
+
+model Achievement {
+  id                 String           @id @default(cuid())
+  candidateProfileId String
+  candidateProfile   CandidateProfile @relation(fields: [candidateProfileId], references: [id], onDelete: Cascade)
+  experienceId       String?
+  experience         Experience?      @relation(fields: [experienceId], references: [id], onDelete: SetNull)
+  projectId          String?
+  project            Project?         @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  description        String
+  metricValue        String?
+  metricUnit         String?
+  sourceId           String?
+  confidence         Float            @default(1.0)
+  createdAt          DateTime         @default(now())
+
+  @@index([candidateProfileId])
+}
+
+model Certification {
+  id                 String           @id @default(cuid())
+  candidateProfileId String
+  candidateProfile   CandidateProfile @relation(fields: [candidateProfileId], references: [id], onDelete: Cascade)
+  name               String
+  issuer             String?
+  issueDate          DateTime?
+  expiryDate         DateTime?
+  credentialUrl      String?
+  sourceId           String?
+  confidence         Float            @default(1.0)
+  createdAt          DateTime         @default(now())
+  deletedAt          DateTime?
+
+  @@index([candidateProfileId])
+}
+
+model PortfolioItem {
+  id                 String           @id @default(cuid())
+  candidateProfileId String
+  candidateProfile   CandidateProfile @relation(fields: [candidateProfileId], references: [id], onDelete: Cascade)
+  title              String
+  url                String
+  type               String? // "github_repo" | "live_site" | "case_study" | ...
+  description        String?
+  createdAt          DateTime         @default(now())
+
+  @@index([candidateProfileId])
+}
+
+model Publication {
+  id                 String           @id @default(cuid())
+  candidateProfileId String
+  candidateProfile   CandidateProfile @relation(fields: [candidateProfileId], references: [id], onDelete: Cascade)
+  title              String
+  venue              String?
+  url                String?
+  publishedDate      DateTime?
+  createdAt          DateTime         @default(now())
+
+  @@index([candidateProfileId])
+}
+
+model CandidatePreference {
+  id                 String           @id @default(cuid())
+  candidateProfileId String           @unique
+  candidateProfile   CandidateProfile @relation(fields: [candidateProfileId], references: [id], onDelete: Cascade)
+  preferredRoles     String[]
+  preferredLocations String[]
+  remoteOk           Boolean          @default(true)
+  hybridOk           Boolean          @default(true)
+  onsiteOk           Boolean          @default(false)
+  industries         String[]
+  updatedAt          DateTime         @updatedAt
+}
+
+// The "reusable answer vault" — canonical answers to recurring screening
+// questions, only reusable once the candidate has explicitly approved reuse.
+model CandidateAnswer {
+  id                  String           @id @default(cuid())
+  candidateProfileId  String
+  candidateProfile    CandidateProfile @relation(fields: [candidateProfileId], references: [id], onDelete: Cascade)
+  questionKey         String // canonical key, e.g. WORK_AUTHORIZATION, NOTICE_PERIOD, RELOCATION
+  answerText           String
+  isReusable          Boolean          @default(false)
+  approvedForReuse    Boolean          @default(false)
+  createdAt           DateTime         @default(now())
+  updatedAt           DateTime         @updatedAt
+
+  @@unique([candidateProfileId, questionKey])
+  @@index([candidateProfileId])
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Resumes
+// ─────────────────────────────────────────────────────────────────────────
+
+enum ResumeKind {
+  MASTER
+  UPLOADED
+  TAILORED
+}
+
+model Resume {
+  id                 String           @id @default(cuid())
+  candidateProfileId String
+  candidateProfile   CandidateProfile @relation(fields: [candidateProfileId], references: [id], onDelete: Cascade)
+  label              String
+  kind               ResumeKind
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+  deletedAt          DateTime?
+
+  versions ResumeVersion[]
+
+  @@index([candidateProfileId])
+}
+
+model ResumeVersion {
+  id                 String    @id @default(cuid())
+  resumeId           String
+  resume             Resume    @relation(fields: [resumeId], references: [id], onDelete: Cascade)
+  versionNumber      Int
+  fileUrl            String? // storage key/URL for the rendered PDF (null until rendered)
+  fileType           String    @default("application/pdf")
+  parsedContent      Json? // structured resume content used to render + for matching
+  generatedForJobId  String?
+  generatedForJob    Job?      @relation(fields: [generatedForJobId], references: [id], onDelete: SetNull)
+  isCurrent          Boolean   @default(false)
+  createdAt          DateTime  @default(now())
+
+  applicationArtifacts ApplicationArtifact[]
+
+  @@unique([resumeId, versionNumber])
+  @@index([resumeId])
+  @@index([generatedForJobId])
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Voice capture
+// ─────────────────────────────────────────────────────────────────────────
+
+enum VoiceSessionStatus {
+  IN_PROGRESS
+  COMPLETED
+  PROCESSED
+}
+
+model VoiceSession {
+  id                 String              @id @default(cuid())
+  candidateProfileId String
+  candidateProfile   CandidateProfile    @relation(fields: [candidateProfileId], references: [id], onDelete: Cascade)
+  promptSetVersion   String              @default("v1")
+  status             VoiceSessionStatus  @default(IN_PROGRESS)
+  durationSeconds    Int?
+  createdAt          DateTime            @default(now())
+  completedAt        DateTime?
+
+  transcripts Transcript[]
+
+  @@index([candidateProfileId])
+}
+
+model Transcript {
+  id             String       @id @default(cuid())
+  voiceSessionId String
+  voiceSession   VoiceSession @relation(fields: [voiceSessionId], references: [id], onDelete: Cascade)
+  promptKey      String
+  promptText     String
+  rawText        String
+  createdAt      DateTime     @default(now())
+
+  @@index([voiceSessionId])
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Employer & jobs
+// ─────────────────────────────────────────────────────────────────────────
+
+enum EmployerVerifiedStatus {
+  UNVERIFIED
+  EMAIL_VERIFIED
+  DOMAIN_VERIFIED
+}
+
+model Employer {
+  id             String                 @id @default(cuid())
+  name           String
+  domain         String?
+  logoUrl        String?
+  verifiedStatus EmployerVerifiedStatus @default(UNVERIFIED)
+  createdAt      DateTime               @default(now())
+  updatedAt      DateTime               @updatedAt
+  deletedAt      DateTime?
+
+  members      EmployerMember[]
+  jobs         Job[]
+  integrations Integration[]
+
+  @@index([deletedAt])
+}
+
+enum EmployerRole {
+  OWNER
+  ADMIN
+  RECRUITER
+}
+
+model EmployerMember {
+  id         String       @id @default(cuid())
+  employerId String
+  employer   Employer     @relation(fields: [employerId], references: [id], onDelete: Cascade)
+  userId     String
+  user       User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role       EmployerRole @default(RECRUITER)
+  invitedAt  DateTime     @default(now())
+  joinedAt   DateTime?
+
+  @@unique([employerId, userId])
+  @@index([userId])
+}
+
+enum JobStatus {
+  DRAFT
+  ACTIVE
+  PAUSED
+  CLOSED
+  EXPIRED
+}
+
+model Job {
+  id                            String    @id @default(cuid())
+  employerId                    String
+  employer                      Employer  @relation(fields: [employerId], references: [id], onDelete: Cascade)
+  title                         String
+  rawDescription                String
+  status                        JobStatus @default(DRAFT)
+  location                      String?
+  employmentType                String? // full_time | part_time | internship | contract
+  seniority                     String?
+  compensationMin               Int?
+  compensationMax               Int?
+  compensationCurrency          String?   @default("INR")
+  remotePolicy                  String?
+  recruiterEmail                String?
+  applicationDeadline           DateTime?
+  workAuthorizationRequirement  String?
+  portfolioRequired             Boolean   @default(false)
+  extractedData                 Json? // full structured JobDescriptionExtraction, cached
+  createdById                   String
+  createdAt                     DateTime  @default(now())
+  updatedAt                     DateTime  @updatedAt
+  deletedAt                     DateTime?
+
+  requirements       JobRequirement[]
+  screeningQuestions ScreeningQuestion[]
+  qrTokens           QRToken[]
+  applications       Application[]
+  resumeVersions     ResumeVersion[]
+
+  @@index([employerId, status])
+  @@index([deletedAt])
+}
+
+enum RequirementKind {
+  MUST_HAVE
+  NICE_TO_HAVE
+  CONTEXTUAL
+  BOILERPLATE
+}
+
+enum RequirementCategory {
+  SKILL
+  EXPERIENCE_YEARS
+  EDUCATION
+  TOOL
+  LANGUAGE
+  CERTIFICATION
+  DOMAIN
+  RESPONSIBILITY
+  WORK_AUTHORIZATION
+  PORTFOLIO
+}
+
+model JobRequirement {
+  id         String               @id @default(cuid())
+  jobId      String
+  job        Job                  @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  kind       RequirementKind
+  category   RequirementCategory
+  label      String
+  value      Json?
+  confidence Float                @default(1.0)
+  createdAt  DateTime             @default(now())
+
+  @@index([jobId])
+}
+
+enum ScreeningQuestionType {
+  TEXT
+  BOOLEAN
+  SINGLE_SELECT
+  MULTI_SELECT
+  NUMBER
+}
+
+model ScreeningQuestion {
+  id           String                @id @default(cuid())
+  jobId        String
+  job          Job                   @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  questionText String
+  questionType ScreeningQuestionType @default(TEXT)
+  options      Json?
+  required     Boolean               @default(true)
+  canonicalKey String? // maps to CandidateAnswer.questionKey when recognized
+  order        Int                   @default(0)
+
+  applicationAnswers ApplicationAnswer[]
+
+  @@index([jobId])
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// QR
+// ─────────────────────────────────────────────────────────────────────────
+
+enum QRTokenType {
+  APPLY
+  MESSAGE
+  APPLY_INTRO
+}
+
+// The QR image encodes `/j/{id}.{signature}`. `signature` is an HMAC over
+// `id` computed with a server secret (src/lib/qr/token.ts) — it lets the
+// resolver reject tampered/guessed ids in O(1) without a DB round trip,
+// while `id` itself stays the DB lookup key (revocable, rate-limited).
+model QRToken {
+  id         String      @id @default(cuid())
+  jobId      String
+  job        Job         @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  type       QRTokenType @default(APPLY)
+  revoked    Boolean     @default(false)
+  expiresAt  DateTime?
+  createdAt  DateTime    @default(now())
+
+  scans QRScan[]
+
+  @@index([jobId])
+}
+
+model QRScan {
+  id                    String   @id @default(cuid())
+  qrTokenId             String
+  qrToken               QRToken  @relation(fields: [qrTokenId], references: [id], onDelete: Cascade)
+  ipHash                String // sha256(ip + daily salt) — never store raw IP
+  userAgent             String?
+  referrer              String?
+  resolvedCandidateUserId String?
+  createdAt             DateTime @default(now())
+
+  @@index([qrTokenId, createdAt])
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Applications
+// ─────────────────────────────────────────────────────────────────────────
+
+enum ApplicationStatus {
+  STARTED
+  PREPARED
+  AWAITING_REVIEW
+  SUBMITTED
+  FAILED
+  WITHDRAWN
+  SHORTLISTED
+  REJECTED
+}
+
+enum ConsentMode {
+  REVIEW
+  ONE_TAP
+  INSTANT
+}
+
+enum ApplicationProviderType {
+  QRIFY_NATIVE
+  ATS_API
+  EMAIL
+  REDIRECT_PREFILL
+  BROWSER_ASSIST
+}
+
+model Application {
+  id                 String                   @id @default(cuid())
+  jobId              String
+  job                Job                      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  candidateProfileId String
+  candidateProfile   CandidateProfile         @relation(fields: [candidateProfileId], references: [id], onDelete: Cascade)
+  status             ApplicationStatus        @default(STARTED)
+  matchScore         Float?
+  matchExplanation   Json? // evidence -> requirement mapping, for transparency
+  consentModeUsed    ConsentMode
+  providerType       ApplicationProviderType  @default(QRIFY_NATIVE)
+  recruiterNote      String?
+  startedAt          DateTime                 @default(now())
+  submittedAt        DateTime?
+  createdAt          DateTime                 @default(now())
+  updatedAt          DateTime                 @updatedAt
+
+  artifacts          ApplicationArtifact[]
+  answers            ApplicationAnswer[]
+  submissionAttempts SubmissionAttempt[]
+
+  @@index([jobId, status])
+  @@index([candidateProfileId])
+}
+
+enum ArtifactType {
+  RESUME
+  COVER_NOTE
+  OUTREACH_MESSAGE
+}
+
+// Immutable record of exactly what was sent — "what exactly did QRify send?"
+model ApplicationArtifact {
+  id              String         @id @default(cuid())
+  applicationId   String
+  application     Application    @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  type            ArtifactType
+  resumeVersionId String?
+  resumeVersion   ResumeVersion? @relation(fields: [resumeVersionId], references: [id], onDelete: SetNull)
+  content         String
+  createdAt       DateTime       @default(now())
+
+  @@index([applicationId])
+}
+
+enum AnswerSource {
+  AUTOFILLED_KNOWN
+  GENERATED
+  CANDIDATE_PROVIDED
+}
+
+model ApplicationAnswer {
+  id                  String             @id @default(cuid())
+  applicationId       String
+  application         Application        @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  screeningQuestionId String?
+  screeningQuestion   ScreeningQuestion? @relation(fields: [screeningQuestionId], references: [id], onDelete: SetNull)
+  questionText        String
+  answerText          String
+  source              AnswerSource
+  confidence          Float?
+  createdAt           DateTime           @default(now())
+
+  @@unique([applicationId, screeningQuestionId])
+  @@index([applicationId])
+}
+
+enum SubmissionStatus {
+  PENDING
+  SUCCESS
+  FAILED
+}
+
+model SubmissionAttempt {
+  id               String                  @id @default(cuid())
+  applicationId    String
+  application      Application             @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  attemptNumber    Int
+  providerType     ApplicationProviderType
+  status           SubmissionStatus        @default(PENDING)
+  errorMessage     String?
+  requestSnapshot  Json?
+  responseSnapshot Json?
+  startedAt        DateTime                @default(now())
+  completedAt      DateTime?
+
+  @@index([applicationId])
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Integrations, consent, audit, notifications
+// ─────────────────────────────────────────────────────────────────────────
+
+enum IntegrationType {
+  ATS_GREENHOUSE
+  ATS_LEVER
+  ATS_WORKABLE
+  ATS_ASHBY
+  ATS_SMARTRECRUITERS
+  EMAIL
+}
+
+enum IntegrationStatus {
+  NOT_CONFIGURED
+  CONNECTED
+  ERROR
+}
+
+model Integration {
+  id         String             @id @default(cuid())
+  employerId String
+  employer   Employer           @relation(fields: [employerId], references: [id], onDelete: Cascade)
+  type       IntegrationType
+  status     IntegrationStatus  @default(NOT_CONFIGURED)
+  config     Json? // non-secret config only; credentials go through OAuthConnection-style encryption if ever added
+  createdAt  DateTime           @default(now())
+  updatedAt  DateTime           @updatedAt
+
+  @@index([employerId])
+}
+
+model ConsentPolicy {
+  id                  String           @id @default(cuid())
+  candidateProfileId  String           @unique
+  candidateProfile    CandidateProfile @relation(fields: [candidateProfileId], references: [id], onDelete: Cascade)
+  mode                ConsentMode      @default(ONE_TAP)
+  updatedAt           DateTime         @updatedAt
+  createdAt           DateTime         @default(now())
+}
+
+model AuditEvent {
+  id         String   @id @default(cuid())
+  actorUserId String?
+  actor      User?    @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+  actorType  String   @default("USER") // USER | SYSTEM | EMPLOYER
+  action     String // e.g. "application.submitted", "oauth.connected", "consent.changed"
+  targetType String?
+  targetId   String?
+  metadata   Json?
+  ipAddress  String?
+  createdAt  DateTime @default(now())
+
+  @@index([actorUserId])
+  @@index([action, createdAt])
+}
+
+model Notification {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      String
+  title     String
+  body      String?
+  metadata  Json?
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId, readAt])
+}
