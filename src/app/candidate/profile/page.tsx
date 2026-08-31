@@ -3,6 +3,7 @@ import { getCurrentUser } from "@/lib/auth/session";
 import { ensureCandidateProfile } from "@/lib/candidate/profile";
 import { ProfileEditor } from "@/components/candidate/profile-editor";
 import { SourceSyncRow } from "@/components/candidate/source-sync-row";
+import { DeleteAccount } from "@/components/candidate/delete-account";
 
 export default async function ProfilePage() {
   const user = await getCurrentUser();
@@ -36,8 +37,13 @@ export default async function ProfilePage() {
           lastSyncedAt={githubSource?.lastSyncedAt?.toISOString() ?? null}
           syncUrl={githubConnection ? "/api/candidate/sync/github" : undefined}
           connectHref={githubConnection ? undefined : "/api/auth/oauth/github?next=/candidate/profile"}
+          sourceId={githubSource && githubSource.status === "ACTIVE" ? githubSource.id : undefined}
         />
-        <SourceSyncRow label="Resume" lastSyncedAt={resumeSource?.lastSyncedAt?.toISOString() ?? null} />
+        <SourceSyncRow
+          label="Resume"
+          lastSyncedAt={resumeSource?.lastSyncedAt?.toISOString() ?? null}
+          sourceId={resumeSource && resumeSource.status === "ACTIVE" ? resumeSource.id : undefined}
+        />
       </div>
 
       <div className="rounded-2xl border border-neutral-200 bg-white p-5">
@@ -50,6 +56,11 @@ export default async function ProfilePage() {
           }}
           consentMode={consentPolicy?.mode ?? "ONE_TAP"}
         />
+      </div>
+
+      <div className="rounded-2xl border border-neutral-200 bg-white p-5">
+        <p className="mb-3 text-sm font-medium">Danger zone</p>
+        <DeleteAccount hasPassword={Boolean(user.passwordHash)} />
       </div>
     </div>
   );

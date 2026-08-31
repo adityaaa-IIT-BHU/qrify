@@ -22,11 +22,11 @@ Every consent change is written to `AuditEvent` (`consent.changed`) with the act
 | Correct it | ✅ `ProfileEditor` component, `PATCH /api/candidate/profile` |
 | See what was sent per application | ✅ `/candidate/applications/[id]` — immutable `ApplicationArtifact`/`ApplicationAnswer` records |
 | Change auto-apply authorization | ✅ consent mode change, above |
-| Disconnect an individual source | 🟡 Schema-ready (`ProfileSource.status = DISCONNECTED`, soft-delete on facts) — **no UI action wired yet.** |
-| Delete individual profile facts | 🟡 Schema supports it (`ProfileFact` rows are addressable) — no UI yet. |
+| Disconnect an individual source | ✅ `DELETE /api/candidate/sources/[id]` + a "Disconnect" action on `/candidate/profile` — soft-deletes the facts it produced, verified live. |
+| Delete individual profile facts | 🟡 Schema supports it (`ProfileFact` rows are addressable) — no UI for deleting a single fact within a still-connected source (only whole-source disconnect is wired). |
 | Export profile | 🟡 Not built. All data is already structured (not a scraping/reconstruction problem) — a JSON export endpoint is a small, well-scoped addition. |
-| Delete account | 🟡 Soft-delete columns exist on `User` and everything it owns — the actual delete-account *flow* (confirmation, cascading soft-delete, audit event) is not built. **Called out as a pre-launch blocker in ROADMAP, not glossed over.** |
-| Revoke OAuth connections | 🟡 `OAuthConnection` rows are deletable; no "Disconnect" button wired in the UI yet. |
+| Delete account | ✅ `DELETE /api/candidate/account`, password-confirmed, revokes every session + OAuth token, deactivates `User`/`CandidateProfile`. Verified live (signup → delete → login correctly rejected → old session cookie correctly rejected). Submitted `Application`/`Job` history is deliberately retained, not purged — see the note below. |
+| Revoke OAuth connections | ✅ Handled as part of account deletion (all `OAuthConnection` rows deleted). Revoking a single connection while keeping the account active is not yet a standalone action. |
 
 This table exists specifically so nobody mistakes "the schema supports it" for "the feature ships" — a distinction the brief is explicit about caring about.
 
@@ -49,7 +49,6 @@ An employer only ever sees: the candidate's name, email, headline, location, por
 
 This build is an engineering MVP, not a launched product, and the following are genuine blockers, not nice-to-haves:
 
-1. Legal review of the DPDP/GDPR framing above by an actual privacy lawyer — the architectural implications listed in RESEARCH.md are a good-faith engineering read of the regulations, not legal sign-off.
-2. Account-deletion flow (schema is ready; the flow isn't built).
-3. Employer verification enforced as a real gate, not just a schema field.
-4. A written incident-response runbook (see SECURITY.md § Known gaps).
+1. Legal review of the DPDP/GDPR framing above by an actual privacy lawyer — the architectural implications listed in RESEARCH.md are a good-faith engineering read of the regulations, not legal sign-off. In particular: legal input on whether account deletion should eventually offer full erasure of a candidate's own submitted-application history (currently retained for the employer's legitimate record-keeping — see above), not just account deactivation.
+2. Employer verification enforced as a real gate, not just a schema field.
+3. A written incident-response runbook (see SECURITY.md § Known gaps).

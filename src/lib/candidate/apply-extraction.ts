@@ -162,7 +162,7 @@ export async function applyCandidateExtraction(
   await recomputeProfileCompleteness(candidateProfileId);
 }
 
-async function recomputeProfileCompleteness(candidateProfileId: string) {
+export async function recomputeProfileCompleteness(candidateProfileId: string) {
   const [profile, experienceCount, skillCount, resumeCount] = await Promise.all([
     db.candidateProfile.findUniqueOrThrow({ where: { id: candidateProfileId } }),
     db.experience.count({ where: { candidateProfileId, deletedAt: null } }),

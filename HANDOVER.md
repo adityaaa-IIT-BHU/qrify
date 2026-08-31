@@ -8,6 +8,8 @@ A working MVP of QRify (see `docs/PRODUCT_SPEC.md` for the product). The full ac
 
 Everything in `docs/ROADMAP.md`'s P0 section is built. Automated tests: 20 unit + 3 integration + 3 e2e, all passing as of this write-up (`npm test`, `npm run test:e2e`).
 
+**Update after initial push**: the repo is live at `github.com/adityaaa-IIT-BHU/qrify` (private). Since the initial push, two P1 items were also completed and verified live: account deletion (`DELETE /api/candidate/account`) and profile-source disconnection (`DELETE /api/candidate/sources/[id]`) — both are now checked off in `docs/ROADMAP.md`/`docs/PRIVACY.md`, not still listed as gaps there.
+
 ## Environment this was built in
 
 - macOS sandbox, no Docker available. Postgres was installed via `brew install postgresql@16` and is running as a `brew services` daemon — role `qrify` / db `qrify`, password in `.env` (`DATABASE_URL`). `docker-compose.yml` is provided for engineers who *do* have Docker, but wasn't itself exercised here.
