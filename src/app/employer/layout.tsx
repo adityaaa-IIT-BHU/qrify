@@ -1,6 +1,10 @@
 import Link from "next/link";
+import { getCurrentUser } from "@/lib/auth/session";
+import { VerifyEmailBanner } from "@/components/employer/verify-email-banner";
 
-export default function EmployerLayout({ children }: { children: React.ReactNode }) {
+export default async function EmployerLayout({ children }: { children: React.ReactNode }) {
+  const user = await getCurrentUser();
+
   return (
     <div className="min-h-dvh bg-neutral-50">
       <header className="border-b border-neutral-200 bg-white">
@@ -21,7 +25,10 @@ export default function EmployerLayout({ children }: { children: React.ReactNode
           </nav>
         </div>
       </header>
-      <div className="mx-auto max-w-5xl px-6 py-10">{children}</div>
+      <div className="mx-auto max-w-5xl space-y-4 px-6 py-10">
+        {user && !user.emailVerifiedAt && <VerifyEmailBanner />}
+        {children}
+      </div>
     </div>
   );
 }

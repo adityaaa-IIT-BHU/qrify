@@ -3,6 +3,7 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { hashPassword } from "@/lib/auth/password";
 import { createSession, getRequestIp } from "@/lib/auth/session";
+import { sendVerificationEmail } from "@/lib/auth/email-verification";
 import { recordAuditEvent } from "@/lib/audit";
 import { checkRateLimit } from "@/lib/rate-limit";
 
@@ -36,6 +37,10 @@ export async function POST(request: NextRequest) {
 
   await createSession(user.id, { ipAddress: ip, userAgent: request.headers.get("user-agent") });
   await recordAuditEvent({ actorUserId: user.id, action: "auth.signup", ipAddress: ip });
+
+  // Password accounts start unverified (magic-link/OAuth accounts are
+  // verified by construction) — don't block signup on this send succeeding.
+  sendVerificationEmail(email).catch((err) => console.error("[signup] verification email failed", err));
 
   return NextResponse.json({ userId: user.id });
 }

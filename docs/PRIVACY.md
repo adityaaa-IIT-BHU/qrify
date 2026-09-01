@@ -42,7 +42,7 @@ An employer only ever sees: the candidate's name, email, headline, location, por
 
 ## Fraud & quality signals (candidate-facing)
 
-- `Employer.verifiedStatus` exists in the schema (`UNVERIFIED` / `EMAIL_VERIFIED` / `DOMAIN_VERIFIED`) so the candidate-facing apply screen can eventually show a trust signal before a candidate sends their resume to an unverified poster. **Not yet surfaced in the UI** — flagged as P1, not silently deferred.
+- `Employer.verifiedStatus` (`UNVERIFIED` / `EMAIL_VERIFIED` / `DOMAIN_VERIFIED`) is now an enforced gate — an unverified employer cannot generate a job QR at all (see SECURITY.md), so no candidate can be scanning into an unverified employer's job in the first place. What's still missing: an explicit "verified employer" badge shown *to the candidate* on the apply screen itself (currently the guarantee is structural — unverified employers have no live QR to scan — rather than an explicit visible signal).
 - Job reporting ("this posting looks fraudulent") is not built.
 
 ## Before a real launch
@@ -50,5 +50,4 @@ An employer only ever sees: the candidate's name, email, headline, location, por
 This build is an engineering MVP, not a launched product, and the following are genuine blockers, not nice-to-haves:
 
 1. Legal review of the DPDP/GDPR framing above by an actual privacy lawyer — the architectural implications listed in RESEARCH.md are a good-faith engineering read of the regulations, not legal sign-off. In particular: legal input on whether account deletion should eventually offer full erasure of a candidate's own submitted-application history (currently retained for the employer's legitimate record-keeping — see above), not just account deactivation.
-2. Employer verification enforced as a real gate, not just a schema field.
-3. A written incident-response runbook (see SECURITY.md § Known gaps).
+2. A written incident-response runbook (see SECURITY.md § Known gaps).

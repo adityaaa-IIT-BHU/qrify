@@ -9,9 +9,17 @@ export async function ensureEmployerForUser(userId: string, companyName: string)
   });
   if (existingMembership) return existingMembership.employer;
 
+  // If the creating user already has a verified email (magic-link/OAuth
+  // signup, or a password account that's since verified), there's no
+  // reason to make them jump through email verification again before their
+  // first job can go live — see docs/PRIVACY.md / SECURITY.md § employer
+  // verification.
+  const user = await db.user.findUniqueOrThrow({ where: { id: userId } });
+
   const employer = await db.employer.create({
     data: {
       name: companyName,
+      verifiedStatus: user.emailVerifiedAt ? "EMAIL_VERIFIED" : "UNVERIFIED",
       members: { create: { userId, role: "OWNER", joinedAt: new Date() } },
     },
   });

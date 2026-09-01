@@ -17,6 +17,14 @@ export async function POST(request: NextRequest, ctx: RouteContext<"/api/jobs/[i
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
+  const job = await db.job.findUniqueOrThrow({ where: { id: jobId }, include: { employer: true } });
+  if (job.employer.verifiedStatus === "UNVERIFIED") {
+    return NextResponse.json(
+      { error: "unverified_employer", message: "Verify your email before publishing a job QR — check your inbox, or resend from the banner on your jobs page." },
+      { status: 403 },
+    );
+  }
+
   const body = await request.json().catch(() => ({}));
   const { type } = CreateQrSchema.parse(body);
 

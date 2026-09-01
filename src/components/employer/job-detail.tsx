@@ -42,6 +42,7 @@ export function JobDetail({ job }: { job: JobData }) {
 
   const [qr, setQr] = useState<{ applyUrl: string; pngDataUrl: string; svg: string } | null>(null);
   const [generatingQr, setGeneratingQr] = useState(false);
+  const [qrError, setQrError] = useState<string | null>(null);
 
   const [applicants, setApplicants] = useState<Applicant[] | null>(null);
 
@@ -70,6 +71,7 @@ export function JobDetail({ job }: { job: JobData }) {
 
   async function generateQr() {
     setGeneratingQr(true);
+    setQrError(null);
     try {
       const res = await fetch(`/api/jobs/${job.id}/qr`, {
         method: "POST",
@@ -77,6 +79,10 @@ export function JobDetail({ job }: { job: JobData }) {
         body: JSON.stringify({ type: "APPLY" }),
       });
       const data = await res.json();
+      if (!res.ok) {
+        setQrError(data.message ?? data.error ?? "Could not generate a QR code");
+        return;
+      }
       setQr(data);
     } finally {
       setGeneratingQr(false);
@@ -208,6 +214,7 @@ export function JobDetail({ job }: { job: JobData }) {
         ) : (
           <>
             <p className="mt-3 text-sm text-neutral-500">Generate a QR code candidates can scan to apply.</p>
+            {qrError && <p className="mt-2 text-sm text-amber-700">{qrError}</p>}
             <button onClick={generateQr} disabled={generatingQr} className="mt-4 w-full rounded-full bg-neutral-900 py-2.5 text-sm font-semibold text-white disabled:opacity-60">
               {generatingQr ? "Generating…" : "Generate QR"}
             </button>
