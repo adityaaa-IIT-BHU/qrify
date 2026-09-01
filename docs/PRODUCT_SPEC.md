@@ -18,9 +18,7 @@ CANDIDATE: SCAN QR → APPLY
 ## Information architecture
 
 **Candidate**: `HOME · PROFILE · RESUMES · APPLICATIONS` (`src/app/candidate/layout.tsx`)
-**Employer**: `JOBS` (+ per-job `APPLICANTS` inline, not a separate top-level nav item — see note below)
-
-> Deviation from the brief's literal "JOBS, APPLICANTS" nav: applicants are scoped to a job in this MVP (view them from inside a job's detail page) rather than a global cross-job inbox. A global applicants view is a small, well-scoped P1 addition (the query pattern already exists in `/api/employer/jobs/[id]/applicants`, it just needs an "all my jobs" variant) — listed in ROADMAP rather than silently added under time pressure.
+**Employer**: `JOBS · APPLICANTS` (`src/app/employer/layout.tsx`) — matches the brief exactly. `APPLICANTS` (`/employer/applicants`) is a cross-job inbox (`GET /api/employer/applicants`); each job's detail page also shows its own applicants inline for in-context review while editing that job.
 
 ## Candidate journey
 

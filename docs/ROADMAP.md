@@ -20,7 +20,7 @@ Roughly ordered by "closes a gap explicitly flagged elsewhere in these docs" fir
 4. ~~**Profile export (JSON)**~~ — **done.** `GET /api/candidate/profile/export`, verified live.
 5. **Distributed rate limiting** — swap the in-memory `Map` (`src/lib/rate-limit.ts`) for Upstash Redis or equivalent before running more than one server instance.
 6. **Confidence-threshold review gate** — `ProfileFact.confidence` is stored but not yet wired to force re-confirmation below a threshold (see AI_SYSTEM.md).
-7. **Global applicants view** for employers (cross-job), not just per-job.
+7. ~~**Global applicants view**~~ — **done.** `/employer/applicants` + `GET /api/employer/applicants`, verified live.
 8. **MESSAGE / APPLY_INTRO QR UI** — `draftOutreachMessage()` exists; no QR-type picker or send/copy UI yet.
 9. **Server-side ASR fallback** (Whisper/Deepgram) for browsers without `SpeechRecognition` support.
 10. **CandidateAnswer vault management UI** — view/edit/revoke saved reusable answers directly (currently only writable via a REVIEW-mode application).

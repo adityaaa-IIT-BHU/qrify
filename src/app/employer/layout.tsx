@@ -8,9 +8,12 @@ export default function EmployerLayout({ children }: { children: React.ReactNode
           <Link href="/employer/jobs" className="text-base font-semibold">
             QRify for Employers
           </Link>
-          <nav className="flex gap-5 text-sm text-neutral-600">
+          <nav className="flex items-center gap-5 text-sm text-neutral-600">
             <Link href="/employer/jobs" className="hover:text-neutral-900">
               Jobs
+            </Link>
+            <Link href="/employer/applicants" className="hover:text-neutral-900">
+              Applicants
             </Link>
             <Link href="/employer/jobs/new" className="rounded-full bg-neutral-900 px-4 py-1.5 text-white">
               + New job
