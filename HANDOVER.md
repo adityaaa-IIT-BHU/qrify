@@ -8,7 +8,16 @@ A working MVP of QRify (see `docs/PRODUCT_SPEC.md` for the product). The full ac
 
 Everything in `docs/ROADMAP.md`'s P0 section is built. Automated tests: 20 unit + 3 integration + 3 e2e, all passing as of this write-up (`npm test`, `npm run test:e2e`).
 
-**Update after initial push**: the repo is live at `github.com/adityaaa-IIT-BHU/qrify` (private). Since the initial push, two P1 items were also completed and verified live: account deletion (`DELETE /api/candidate/account`) and profile-source disconnection (`DELETE /api/candidate/sources/[id]`) — both are now checked off in `docs/ROADMAP.md`/`docs/PRIVACY.md`, not still listed as gaps there.
+**Update after initial push**: the repo is live at `github.com/adityaaa-IIT-BHU/qrify` (private). Since the initial push, six P1 items were also completed and verified live (not just written — each was exercised against the running app with curl/Playwright before being marked done in `docs/ROADMAP.md`):
+
+1. Account deletion (`DELETE /api/candidate/account`) — password-confirmed, revokes sessions + OAuth tokens.
+2. Profile-source disconnection (`DELETE /api/candidate/sources/[id]`).
+3. Candidate data export (`GET /api/candidate/profile/export`).
+4. Cross-job employer applicants inbox (`/employer/applicants`) — closes the nav deviation from the original brief (now exactly `JOBS · APPLICANTS`).
+5. CandidateAnswer vault management UI (`/candidate/profile` "Saved answers" — add/edit/toggle-reuse/remove, not just passive accumulation via REVIEW-mode applications).
+6. Employer email verification enforced as a real gate — `POST /api/jobs/[id]/qr` now 403s (`unverified_employer`) until the employer's `Employer.verifiedStatus` moves off `UNVERIFIED`; a resend-verification banner shows on `/employer/*` until then.
+
+Each of these is documented in its own commit message with what was verified and how — `git log` for the details, they're thorough. `docs/ROADMAP.md`, `docs/PRIVACY.md`, and `docs/SECURITY.md` all reflect current state (not stale — checked off as each item landed, not batched at the end).
 
 ## Environment this was built in
 
@@ -39,16 +48,16 @@ Everything in `docs/ROADMAP.md`'s P0 section is built. Automated tests: 20 unit 
 
 6. **Next's ESLint config enforces a React "purity" rule** that flags `Date.now()` (or any impure call) inside a component function body, including Server Components — caught building the apply-flow timing display. Fix pattern used: compute timing *inside a non-component function* (`prepareApplication()` in `src/lib/applications/service.ts` now returns `serverPrepareMs` itself) and pass the number down as a prop, rather than calling `Date.now()` in a page/component body.
 
-## What's NOT done (see `docs/ROADMAP.md` for the full, prioritized list)
+## What's NOT done (see `docs/ROADMAP.md` for the full, current, prioritized list — it's kept up to date, not this file)
 
-Top of the P1 list: account-deletion flow (schema-ready, no flow), employer verification enforced as a real gate (schema field exists, unused), profile-source disconnect UI, distributed rate limiting (current limiter is in-memory, single-instance only — flagged in `src/lib/rate-limit.ts`'s own file comment), MESSAGE/APPLY_INTRO QR type UI (draft-generation code exists in `src/lib/ai/outreach.ts`, no picker/send UI), first real ATS integration (interface + stubs exist in `src/lib/providers/`, nothing wired for real — see `docs/RESEARCH.md` for why that's a partnership/integration-effort question, not a missing-endpoint question).
+Remaining P1, roughly in order: distributed rate limiting (current limiter is in-memory, single-instance only — flagged in `src/lib/rate-limit.ts`'s own file comment), confidence-threshold auto-review gate (`ProfileFact.confidence` is stored, not yet wired to force re-confirmation below a threshold), MESSAGE/APPLY_INTRO QR type UI (draft-generation code exists in `src/lib/ai/outreach.ts`, no picker/send UI), server-side ASR fallback for browsers without `SpeechRecognition`, first real ATS integration (interface + stubs exist in `src/lib/providers/`, nothing wired for real — see `docs/RESEARCH.md` for why that's a partnership/integration-effort question, not a missing-endpoint question), LinkedIn "Sign In" button (config exists in `linkedinConfig()`, gated behind `LINKEDIN_CLIENT_ID` being set, no button wired), a written incident-response runbook, domain-level employer verification (`DOMAIN_VERIFIED` tier — email verification is done and enforced, domain is not).
 
 ## Immediate next steps, in order
 
-1. If continuing in a fresh session: `cd ~/qrify` (or wherever this landed), confirm Postgres is running (`brew services list` or `docker compose ps`), confirm `.env` exists and has real values, `npm install`, `npx prisma generate`, `npm run dev`, `npm run db:seed` if the DB is empty.
-2. Get a funded `ANTHROPIC_API_KEY` and actually validate AI output quality (JD parsing, resume/voice extraction, tailored resume generation, factuality checking) — this is the single biggest unvalidated surface.
-3. Work the P1 list in `docs/ROADMAP.md`, roughly top-to-bottom (it's already ordered by "closes a gap flagged elsewhere in the docs" first).
-4. If a GitHub repo push hasn't happened yet by the time you're reading this (check `git remote -v` and `git log`), that was the very next step after this file was written — do it: `git add -A && git commit` (has real content to commit, not the create-next-app scaffold, which is the only thing currently committed as of this checkpoint) and push to whatever remote was set up.
+1. If continuing in a fresh session: `cd ~/qrify` (or wherever this landed), confirm Postgres is running (`brew services list` or `docker compose ps`), confirm `.env` exists and has real values, `npm install`, `npx prisma generate`, `npm run dev`, `npm run db:seed` if the DB is empty. Run `npm test` and `npx next build` first to confirm nothing regressed since this file was last touched.
+2. **Get a funded `ANTHROPIC_API_KEY` and actually validate AI output quality** (JD parsing, resume/voice extraction, tailored resume generation, factuality checking) — this is still the single biggest unvalidated surface in the whole project, unchanged since the initial handover. Everything deterministic (auth, matching, QR, applications, employer dashboard, all six P1 items above) has been verified live repeatedly; the AI legs have only been verified for request-shape correctness.
+3. Work the remaining P1 list in `docs/ROADMAP.md` top-to-bottom.
+4. Whenever you finish a chunk of work: run `npm test && npx next build`, update the relevant doc(s) in the same commit (not as an afterthought), commit, push. This is the pattern every commit in this repo's history follows — keep it going rather than batching doc updates for "later."
 
 ## Credentials this session set up (all in `.env`, gitignored — not lost, just not in git)
 
