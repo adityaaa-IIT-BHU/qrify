@@ -24,7 +24,7 @@ Every consent change is written to `AuditEvent` (`consent.changed`) with the act
 | Change auto-apply authorization | ✅ consent mode change, above |
 | Disconnect an individual source | ✅ `DELETE /api/candidate/sources/[id]` + a "Disconnect" action on `/candidate/profile` — soft-deletes the facts it produced, verified live. |
 | Delete individual profile facts | 🟡 Schema supports it (`ProfileFact` rows are addressable) — no UI for deleting a single fact within a still-connected source (only whole-source disconnect is wired). |
-| Export profile | 🟡 Not built. All data is already structured (not a scraping/reconstruction problem) — a JSON export endpoint is a small, well-scoped addition. |
+| Export profile | ✅ `GET /api/candidate/profile/export` — full JSON dump (profile, facts, resumes metadata, applications), `Content-Disposition: attachment`. "Download my data" link on `/candidate/profile`. Verified live. |
 | Delete account | ✅ `DELETE /api/candidate/account`, password-confirmed, revokes every session + OAuth token, deactivates `User`/`CandidateProfile`. Verified live (signup → delete → login correctly rejected → old session cookie correctly rejected). Submitted `Application`/`Job` history is deliberately retained, not purged — see the note below. |
 | Revoke OAuth connections | ✅ Handled as part of account deletion (all `OAuthConnection` rows deleted). Revoking a single connection while keeping the account active is not yet a standalone action. |
 

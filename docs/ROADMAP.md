@@ -17,7 +17,7 @@ Roughly ordered by "closes a gap explicitly flagged elsewhere in these docs" fir
 1. ~~**Account deletion flow**~~ — **done.** `DELETE /api/candidate/account` (`src/lib/candidate/account.ts`), password-confirmed, revokes sessions + OAuth tokens, soft-deletes `User`/`CandidateProfile`. Verified live: signup → delete → login correctly rejected → old session cookie correctly rejected. `Application`/`Job` history is deliberately retained, not purged — see PRIVACY.md for the reasoning and the remaining open legal question (full erasure vs. retention obligations).
 2. **Employer verification enforced as a gate** — `Employer.verifiedStatus` exists but doesn't block job publishing yet.
 3. ~~**Profile source disconnection UI**~~ — **done.** `DELETE /api/candidate/sources/[id]` (`src/lib/candidate/disconnect-source.ts`) + a "Disconnect" action on `/candidate/profile`. Soft-deletes `Experience`/`Education`/`Project`/`Certification`, hard-deletes the `Skill`/`Achievement` rows that source owns (see the file's comment for why hard-delete is correct there specifically), recomputes profile completeness. Verified live.
-4. **Profile export (JSON)** — data is already structured; small addition.
+4. ~~**Profile export (JSON)**~~ — **done.** `GET /api/candidate/profile/export`, verified live.
 5. **Distributed rate limiting** — swap the in-memory `Map` (`src/lib/rate-limit.ts`) for Upstash Redis or equivalent before running more than one server instance.
 6. **Confidence-threshold review gate** — `ProfileFact.confidence` is stored but not yet wired to force re-confirmation below a threshold (see AI_SYSTEM.md).
 7. **Global applicants view** for employers (cross-job), not just per-job.

@@ -59,6 +59,14 @@ export default async function ProfilePage() {
       </div>
 
       <div className="rounded-2xl border border-neutral-200 bg-white p-5">
+        <p className="text-sm font-medium">Your data</p>
+        <p className="mt-1 text-sm text-neutral-500">Every profile fact, resume, and application QRify holds for you, as one file.</p>
+        <a href="/api/candidate/profile/export" className="mt-3 inline-block text-sm font-medium underline">
+          Download my data
+        </a>
+      </div>
+
+      <div className="rounded-2xl border border-neutral-200 bg-white p-5">
         <p className="mb-3 text-sm font-medium">Danger zone</p>
         <DeleteAccount hasPassword={Boolean(user.passwordHash)} />
       </div>
