@@ -23,7 +23,7 @@ Roughly ordered by "closes a gap explicitly flagged elsewhere in these docs" fir
 7. ~~**Global applicants view**~~ — **done.** `/employer/applicants` + `GET /api/employer/applicants`, verified live.
 8. **MESSAGE / APPLY_INTRO QR UI** — `draftOutreachMessage()` exists; no QR-type picker or send/copy UI yet.
 9. **Server-side ASR fallback** (Whisper/Deepgram) for browsers without `SpeechRecognition` support.
-10. **CandidateAnswer vault management UI** — view/edit/revoke saved reusable answers directly (currently only writable via a REVIEW-mode application).
+10. ~~**CandidateAnswer vault management UI**~~ — **done.** `/candidate/profile` "Saved answers" section, `GET/POST /api/candidate/answers` + `PATCH/DELETE /api/candidate/answers/[id]` — view, edit, toggle reusability, remove, or proactively add a new saved answer, not just via a REVIEW-mode application. Verified live (added/edited/toggled/deleted against the seeded candidate).
 11. **First real ATS integration** — pick one (Greenhouse's Job Board API is the most self-serve starting point per RESEARCH.md) and wire `AtsApiProvider` for real, including per-employer credential storage.
 12. **LinkedIn "Sign In"** UI wiring — config exists (`linkedinConfig()`), no login button yet (gated behind `LINKEDIN_CLIENT_ID` being set).
 13. **Incident-response runbook.**

@@ -4,17 +4,19 @@ import { ensureCandidateProfile } from "@/lib/candidate/profile";
 import { ProfileEditor } from "@/components/candidate/profile-editor";
 import { SourceSyncRow } from "@/components/candidate/source-sync-row";
 import { DeleteAccount } from "@/components/candidate/delete-account";
+import { AnswerVault } from "@/components/candidate/answer-vault";
 
 export default async function ProfilePage() {
   const user = await getCurrentUser();
   if (!user) return null;
 
   const profile = await ensureCandidateProfile(user.id);
-  const [sources, skills, experiences, consentPolicy] = await Promise.all([
+  const [sources, skills, experiences, consentPolicy, vaultAnswers] = await Promise.all([
     db.profileSource.findMany({ where: { candidateProfileId: profile.id } }),
     db.skill.count({ where: { candidateProfileId: profile.id } }),
     db.experience.count({ where: { candidateProfileId: profile.id, deletedAt: null } }),
     db.consentPolicy.findUnique({ where: { candidateProfileId: profile.id } }),
+    db.candidateAnswer.findMany({ where: { candidateProfileId: profile.id }, orderBy: { questionKey: "asc" } }),
   ]);
 
   const githubConnection = await db.oAuthConnection.findFirst({ where: { userId: user.id, provider: "GITHUB" } });
@@ -56,6 +58,11 @@ export default async function ProfilePage() {
           }}
           consentMode={consentPolicy?.mode ?? "ONE_TAP"}
         />
+      </div>
+
+      <div className="rounded-2xl border border-neutral-200 bg-white p-5">
+        <p className="mb-3 text-sm font-medium">Saved answers</p>
+        <AnswerVault initial={vaultAnswers} />
       </div>
 
       <div className="rounded-2xl border border-neutral-200 bg-white p-5">
